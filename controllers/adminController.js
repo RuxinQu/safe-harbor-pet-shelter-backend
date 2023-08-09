@@ -1,14 +1,43 @@
 const router = require("express").Router();
-const { upload, removeFileFromS3 } = require("../util/imageHelper");
+const jwt = require("jsonwebtoken");
+const bcrypt = require("bcrypt");
 const passport = require("passport");
 const rateLimit = require("express-rate-limit");
-const isLoggedIn = require("../util/auth");
+const { upload, removeFileFromS3 } = require("../util/imageHelper");
 const { Pet } = require("../models");
+require("dotenv").config();
+
+const user = {
+  id: process.env.ADMIN_ID,
+  username: process.env.ADMIN_USERNAME,
+  password: process.env.ADMIN_PASSWORD_HASH,
+};
+
+const isLoggedIn = passport.authenticate("jwt", { session: false });
 
 const limiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 minutes
   max: 5, // 5 requests per windows
   message: "Too many requests, please try again later",
+});
+
+router.post("/login", limiter, async (req, res) => {
+  const { username, password } = req.body;
+  if (username !== user.username) {
+    res.status(404).send({ message: "failed to find the user" });
+  }
+  const checkPw = await bcrypt.compare(password, user.password);
+  if (!checkPw) {
+    return res.status(400).send({ message: "wrong password" });
+  }
+  const token = jwt.sign({ sub: user.id }, process.env.SESSION_SECRET_KEY, {
+    expiresIn: "1h",
+  });
+  res.json({ token });
+});
+
+router.get("/auth", isLoggedIn, (req, res) => {
+  res.status(200).json({ message: "success" });
 });
 
 router.post(
@@ -87,25 +116,6 @@ router.delete("/delete-pet/:id", isLoggedIn, async (req, res) => {
   } catch (err) {
     res.status(404).send();
   }
-});
-
-router.post("/login", limiter, passport.authenticate("local"), (req, res) => {
-  res.send(req.user);
-});
-
-router.get("/logout", (req, res) => {
-  req.logout((err) => {
-    if (err) {
-      return next(err);
-    }
-    req.session.destroy();
-
-    res.status(204).send();
-  });
-});
-
-router.get("/auth", isLoggedIn, (req, res) => {
-  res.status(200).send();
 });
 
 module.exports = router;

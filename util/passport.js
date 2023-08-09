@@ -1,6 +1,6 @@
 const passport = require("passport");
-const LocalStrategy = require("passport-local").Strategy;
-const bcrypt = require("bcrypt");
+const JwtStrategy = require("passport-jwt").Strategy;
+const ExtractJwt = require("passport-jwt").ExtractJwt;
 require("dotenv").config();
 
 const user = {
@@ -9,30 +9,19 @@ const user = {
   password: process.env.ADMIN_PASSWORD_HASH,
 };
 
+const options = {
+  jwtFromRequest: ExtractJwt.fromAuthHeaderAsBearerToken(),
+  secretOrKey: process.env.SESSION_SECRET_KEY,
+};
+
 passport.use(
-  new LocalStrategy(async (username, password, done) => {
-    try {
-      if (username !== user.username) {
-        return done(null, false, {
-          message: "Wrong username",
-        });
-      }
-      const matchPassword = await bcrypt.compare(password, user.password);
-      return matchPassword
-        ? done(null, user)
-        : done(null, false, { message: "Incorrect password" });
-    } catch (err) {
-      done(err);
+  new JwtStrategy(options, (jwtPayload, done) => {
+    if (jwtPayload.sub === user.id) {
+      return done(null, user || false);
+    } else {
+      return done(err, false);
     }
   })
 );
 
-// configure Passport session serialization
-passport.serializeUser((user, done) => {
-  done(null, user.id);
-});
-passport.deserializeUser((id, done) => {
-  if (id === user.id) {
-    done(null, user);
-  }
-});
+module.exports = passport;
